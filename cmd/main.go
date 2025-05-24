@@ -36,10 +36,11 @@ var downloadCmd = &cobra.Command{
 		}
 
 		// Parse URLs
-		cfg.URLs = config.ParseURLs(urlsStr)
-		if len(cfg.URLs) == 0 {
-			return fmt.Errorf("no valid URLs provided")
+		urls, err := config.ParseURLs(urlsStr)
+		if err != nil {
+			return fmt.Errorf("failed to parse URLs: %w", err)
 		}
+		cfg.URLs = urls
 
 		// Create context with cancellation
 		ctx, cancel := context.WithCancel(context.Background())

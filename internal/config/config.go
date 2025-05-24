@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -98,10 +99,36 @@ func validateConfig(cfg *Config) error {
 	return nil
 }
 
-// ParseURLs splits a comma-separated string of URLs into a slice
-func ParseURLs(urlsStr string) []string {
+// ParseURLs splits a comma-separated string of URLs into a slice and validates each URL
+func ParseURLs(urlsStr string) ([]string, error) {
 	if urlsStr == "" {
-		return nil
+		return nil, nil
 	}
-	return strings.Split(urlsStr, ",")
+
+	urls := strings.Split(urlsStr, ",")
+	validURLs := make([]string, 0, len(urls))
+
+	for _, u := range urls {
+		u = strings.TrimSpace(u)
+		if u == "" {
+			continue
+		}
+
+		parsedURL, err := url.Parse(u)
+		if err != nil {
+			return nil, fmt.Errorf("invalid URL %q: %w", u, err)
+		}
+
+		if parsedURL.Scheme == "" || parsedURL.Host == "" {
+			return nil, fmt.Errorf("invalid URL %q: missing scheme or host", u)
+		}
+
+		validURLs = append(validURLs, u)
+	}
+
+	if len(validURLs) == 0 {
+		return nil, fmt.Errorf("no valid URLs provided")
+	}
+
+	return validURLs, nil
 }
