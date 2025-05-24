@@ -36,6 +36,7 @@ This project takes into account the limitations of Audi MMI systems regarding tr
 - Support for a list of YouTube URLs for batch downloading.
 - Organize downloaded files in a target folder for easy access.
 - Sanitize metadata and filenames for maximum compatibility with Audi MMI.
+- Removes (empties) the description and synopsis metadata tags from MP3 files to ensure maximum compatibility with Audi MMI systems.
 
 ## Installation
 
