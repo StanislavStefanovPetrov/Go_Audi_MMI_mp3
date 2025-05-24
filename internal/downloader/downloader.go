@@ -174,8 +174,29 @@ func (d *Downloader) Download(ctx context.Context, videoURL string) error {
 	tag.SetArtist(removeNonASCII(tag.Artist()))
 	tag.SetAlbum(removeNonASCII(tag.Album()))
 
+	// Clean all CommentFrames (COMM)
+	for _, cf := range tag.GetFrames(tag.CommonID("Comments")) {
+		if comment, ok := cf.(id3v2.CommentFrame); ok {
+			comment.Text = removeNonASCII(comment.Text)
+			tag.DeleteFrames(tag.CommonID("Comments"))
+			tag.AddCommentFrame(comment)
+		}
+	}
+
 	if err := tag.Save(); err != nil {
 		return fmt.Errorf("failed to save cleaned tags: %w", err)
+	}
+
+	// Clean description and synopsis using ffmpeg (overwrite with ASCII-only)
+	ffmpegTmp := strings.TrimSuffix(mp3file, ".mp3") + ".tmp.mp3"
+	ffmpegArgs := []string{"-y", "-i", mp3file, "-metadata", "description=", "-metadata", "synopsis=", "-c:a", "copy", ffmpegTmp}
+	cmd = exec.Command("ffmpeg", ffmpegArgs...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("ffmpeg metadata clean failed: %s, error: %w", string(out), err)
+	}
+	// Replace original file
+	if err := exec.Command("mv", ffmpegTmp, mp3file).Run(); err != nil {
+		return fmt.Errorf("failed to replace mp3 after ffmpeg metadata clean: %w", err)
 	}
 
 	fmt.Printf("Successfully downloaded, converted and cleaned tags: %s\n", videoURL)
