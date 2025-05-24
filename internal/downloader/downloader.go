@@ -111,6 +111,9 @@ func (d *Downloader) Download(ctx context.Context, videoURL string) error {
 		"--parse-metadata", "description:regex_replace:\\s+: :",
 		// Set album as combination of artist and title
 		"--parse-metadata", "album:%(artist)s - %(title)s",
+		// Explicitly clear description and synopsis
+		"--parse-metadata", "description:%(none)s",
+		"--parse-metadata", "synopsis:%(none)s",
 		"--restrict-filenames",
 		"--no-playlist",
 		"--no-write-info-json",
