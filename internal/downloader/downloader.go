@@ -3,6 +3,7 @@ package downloader
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -14,20 +15,14 @@ import (
 	"github.com/stanislavpetrov/Go_Audi_MMI_mp3/internal/config"
 )
 
-// sanitizeMetadata removes non-ASCII characters and emojis from metadata fields
-func sanitizeMetadata(text string) string {
-	// Remove emojis and non-ASCII characters
-	reg := regexp.MustCompile(`[^\x00-\x7F]`)
-	text = reg.ReplaceAllString(text, "")
+var debug bool
 
-	// Remove multiple spaces and newlines
-	reg = regexp.MustCompile(`\s+`)
-	text = reg.ReplaceAllString(text, " ")
-
-	// Trim spaces
-	text = strings.TrimSpace(text)
-
-	return text
+func init() {
+	debugEnv := os.Getenv("DEBUG")
+	debug = (debugEnv == "true" || debugEnv == "1")
+	if debug {
+		fmt.Println("[DEBUG] Debug mode enabled")
+	}
 }
 
 // sanitizeFilename removes non-ASCII characters, emojis, and invalid filesystem characters
@@ -87,14 +82,24 @@ func New(cfg *config.Config) *Downloader {
 }
 
 func (d *Downloader) Download(ctx context.Context, videoURL string) error {
+	if debug {
+		fmt.Printf("[DEBUG] Starting download for URL: %s\n", videoURL)
+		fmt.Printf("[DEBUG] Config: OutputDir=%s, Bitrate=%d, SampleRate=%d, Channels=%d\n",
+			d.cfg.OutputDir, d.cfg.Bitrate, d.cfg.SampleRate, d.cfg.Channels)
+	}
+
 	// Prepare output filename pattern with sanitized title
 	outputPattern := filepath.Join(d.cfg.OutputDir, "%(title)s.%(ext)s")
+	if debug {
+		fmt.Printf("[DEBUG] Output pattern: %s\n", outputPattern)
+	}
 
 	// Prepare yt-dlp command with sanitized metadata
 	args := []string{
 		"-x", // extract audio
 		"--audio-format", "mp3",
 		"--audio-quality", fmt.Sprintf("%dK", d.cfg.Bitrate),
+		"--postprocessor-args", fmt.Sprintf("ffmpeg:-ar %d -ac %d", d.cfg.SampleRate, d.cfg.Channels),
 		"--add-metadata",
 		"--embed-metadata",
 		// Use regex to clean metadata
@@ -125,10 +130,21 @@ func (d *Downloader) Download(ctx context.Context, videoURL string) error {
 		videoURL,
 	}
 
+	if debug {
+		fmt.Printf("[DEBUG] yt-dlp command: yt-dlp %v\n", args)
+	}
+
 	cmd := exec.CommandContext(ctx, "yt-dlp", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		if debug {
+			fmt.Printf("[DEBUG] yt-dlp failed with output: %s\n", string(output))
+		}
 		return fmt.Errorf("yt-dlp failed: %s, error: %w", string(output), err)
+	}
+
+	if debug {
+		fmt.Printf("[DEBUG] yt-dlp output: %s\n", string(output))
 	}
 
 	// Get the actual filename from yt-dlp output and sanitize it
@@ -160,6 +176,9 @@ func (d *Downloader) Download(ctx context.Context, videoURL string) error {
 	for _, f := range files {
 		if strings.HasSuffix(f.Name(), ".mp3") {
 			mp3file = filepath.Join(d.cfg.OutputDir, f.Name())
+			if debug {
+				fmt.Printf("[DEBUG] Found MP3 file: %s\n", mp3file)
+			}
 		}
 	}
 	if mp3file == "" {
@@ -193,15 +212,60 @@ func (d *Downloader) Download(ctx context.Context, videoURL string) error {
 	// Clean description and synopsis using ffmpeg (overwrite with ASCII-only)
 	ffmpegTmp := strings.TrimSuffix(mp3file, ".mp3") + ".tmp.mp3"
 	ffmpegArgs := []string{"-y", "-i", mp3file, "-metadata", "description=", "-metadata", "synopsis=", "-c:a", "copy", ffmpegTmp}
+	if debug {
+		fmt.Printf("[DEBUG] ffmpeg metadata clean command: ffmpeg %v\n", ffmpegArgs)
+	}
+
 	cmd = exec.Command("ffmpeg", ffmpegArgs...)
 	if out, err := cmd.CombinedOutput(); err != nil {
+		if debug {
+			fmt.Printf("[DEBUG] ffmpeg metadata clean failed with output: %s\n", string(out))
+		}
 		return fmt.Errorf("ffmpeg metadata clean failed: %s, error: %w", string(out), err)
 	}
+
 	// Replace original file
+	if debug {
+		fmt.Printf("[DEBUG] Moving %s to %s\n", ffmpegTmp, mp3file)
+	}
 	if err := exec.Command("mv", ffmpegTmp, mp3file).Run(); err != nil {
 		return fmt.Errorf("failed to replace mp3 after ffmpeg metadata clean: %w", err)
 	}
 
+	// FINAL: Ensure correct sample rate, channels, bitrate with ffmpeg
+	ffmpegFinal := strings.TrimSuffix(mp3file, ".mp3") + ".final.mp3"
+	ffmpegArgs = []string{
+		"-y",
+		"-i", mp3file,
+		"-ar", fmt.Sprintf("%d", d.cfg.SampleRate),
+		"-ac", fmt.Sprintf("%d", d.cfg.Channels),
+		"-b:a", fmt.Sprintf("%dk", d.cfg.Bitrate),
+		"-c:a", "libmp3lame",
+		ffmpegFinal,
+	}
+	if debug {
+		fmt.Printf("[DEBUG] ffmpeg final conversion command: ffmpeg %v\n", ffmpegArgs)
+	}
+
+	cmd = exec.Command("ffmpeg", ffmpegArgs...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		if debug {
+			fmt.Printf("[DEBUG] ffmpeg final conversion failed with output: %s\n", string(out))
+		}
+		return fmt.Errorf("ffmpeg final sample rate conversion failed: %s, error: %w", string(out), err)
+	}
+
+	// Replace original file with the one that has correct sample rate
+	if debug {
+		fmt.Printf("[DEBUG] Moving %s to %s\n", ffmpegFinal, mp3file)
+	}
+	if err := exec.Command("mv", ffmpegFinal, mp3file).Run(); err != nil {
+		return fmt.Errorf("failed to replace mp3 after ffmpeg final sample rate conversion: %w", err)
+	}
+
+	if debug {
+		fmt.Printf("[DEBUG] Download completed successfully for: %s\n", videoURL)
+	}
 	fmt.Printf("Successfully downloaded, converted and cleaned tags: %s\n", videoURL)
 	return nil
 }

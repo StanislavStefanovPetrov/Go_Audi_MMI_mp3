@@ -29,6 +29,28 @@ var downloadCmd = &cobra.Command{
 			return fmt.Errorf("failed to load config: %w", err)
 		}
 
+		// Override config with flag values
+		if cmd.Flags().Changed("bitrate") {
+			if val, err := cmd.Flags().GetInt("bitrate"); err == nil {
+				cfg.Bitrate = val
+			}
+		}
+		if cmd.Flags().Changed("channels") {
+			if val, err := cmd.Flags().GetInt("channels"); err == nil {
+				cfg.Channels = val
+			}
+		}
+		if cmd.Flags().Changed("sample-rate") {
+			if val, err := cmd.Flags().GetInt("sample-rate"); err == nil {
+				cfg.SampleRate = val
+			}
+		}
+		if cmd.Flags().Changed("output-dir") {
+			if val, err := cmd.Flags().GetString("output-dir"); err == nil {
+				cfg.OutputDir = val
+			}
+		}
+
 		// Get URLs from flag
 		urlsStr, _ := cmd.Flags().GetString("urls")
 		if urlsStr == "" {
@@ -69,11 +91,19 @@ func init() {
 	downloadCmd.Flags().Int("sample-rate", 48000, "Audio sample rate in Hz")
 	downloadCmd.Flags().String("output-dir", "./downloads", "Output directory for downloaded files")
 
-	// Bind flags to environment variables
-	downloadCmd.Flags().Set("bitrate", os.Getenv("YTMP3_BITRATE"))
-	downloadCmd.Flags().Set("channels", os.Getenv("YTMP3_CHANNELS"))
-	downloadCmd.Flags().Set("sample-rate", os.Getenv("YTMP3_SAMPLE_RATE"))
-	downloadCmd.Flags().Set("output-dir", os.Getenv("YTMP3_OUTPUT_DIR"))
+	// Set default values from environment variables only if flags are not set
+	if val := os.Getenv("YTMP3_BITRATE"); val != "" && !downloadCmd.Flags().Changed("bitrate") {
+		downloadCmd.Flags().Set("bitrate", val)
+	}
+	if val := os.Getenv("YTMP3_CHANNELS"); val != "" && !downloadCmd.Flags().Changed("channels") {
+		downloadCmd.Flags().Set("channels", val)
+	}
+	if val := os.Getenv("YTMP3_SAMPLE_RATE"); val != "" && !downloadCmd.Flags().Changed("sample-rate") {
+		downloadCmd.Flags().Set("sample-rate", val)
+	}
+	if val := os.Getenv("YTMP3_OUTPUT_DIR"); val != "" && !downloadCmd.Flags().Changed("output-dir") {
+		downloadCmd.Flags().Set("output-dir", val)
+	}
 
 	rootCmd.AddCommand(downloadCmd)
 }
