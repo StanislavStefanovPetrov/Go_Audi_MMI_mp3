@@ -94,38 +94,12 @@ func (d *Downloader) Download(ctx context.Context, videoURL string) error {
 		fmt.Printf("[DEBUG] Output pattern: %s\n", outputPattern)
 	}
 
-	// Prepare yt-dlp command with sanitized metadata
+	// Prepare yt-dlp command with minimal required arguments
 	args := []string{
 		"-x", // extract audio
 		"--audio-format", "mp3",
-		"--audio-quality", fmt.Sprintf("%dK", d.cfg.Bitrate),
-		"--postprocessor-args", fmt.Sprintf("ffmpeg:-ar %d -ac %d", d.cfg.SampleRate, d.cfg.Channels),
-		"--add-metadata",
-		"--embed-metadata",
-		// Use regex to clean metadata
-		"--parse-metadata", "title:(?s)(.*)",
-		"--parse-metadata", "artist:(?s)(.*)",
-		"--parse-metadata", "description:(?s)(.*)",
-		// Remove non-ASCII characters from metadata
-		"--parse-metadata", "title:regex_replace:[^\\x00-\\x7F]:",
-		"--parse-metadata", "artist:regex_replace:[^\\x00-\\x7F]:",
-		"--parse-metadata", "description:regex_replace:[^\\x00-\\x7F]:",
-		// Clean up multiple spaces
-		"--parse-metadata", "title:regex_replace:\\s+: :",
-		"--parse-metadata", "artist:regex_replace:\\s+: :",
-		"--parse-metadata", "description:regex_replace:\\s+: :",
-		// Set album as combination of artist and title
-		"--parse-metadata", "album:%(artist)s - %(title)s",
-		// Explicitly clear description and synopsis
-		"--parse-metadata", "description:%(none)s",
-		"--parse-metadata", "synopsis:%(none)s",
 		"--restrict-filenames",
 		"--no-playlist",
-		"--no-write-info-json",
-		"--no-write-thumbnail",
-		"--no-write-subs",
-		"--no-write-auto-subs",
-		"--clean-infojson",
 		"-o", outputPattern,
 		videoURL,
 	}
